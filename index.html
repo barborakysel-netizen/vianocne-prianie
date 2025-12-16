@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Zapni sviatky. Vypni starosti.</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      background: #0b1020;
+      color: #e8ecff;
+    }
+    .card {
+      width: min(820px, 94vw);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    }
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 850;
+      letter-spacing: .2px;
+    }
+    h2 {
+      margin: 6px 0 12px;
+      font-size: 16px;
+      opacity: .82;
+      font-weight: 650;
+    }
+    p {
+      margin: 0 0 14px;
+      opacity: .9;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 14px;
+      background: radial-gradient(ellipse at top, rgba(255,255,255,0.06), rgba(0,0,0,0));
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 12px;
+    }
+    button {
+      cursor: pointer;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-weight: 750;
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+    }
+    button:hover { background: rgba(255,255,255,0.18); }
+
+    .wish {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      font-size: 14px;
+      line-height: 1.35;
+      opacity: .92;
+    }
+    .signature {
+      margin-top: 8px;
+      text-align: right;
+      font-size: 14px;
+      opacity: .72;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <h1>Zapni sviatky. Vypni starosti. 🔋</h1>
+    <h2>🎄 LED stromček – vianočná pohľadnica</h2>
+    <p>Klikni na stromček alebo stlač <b>Režim</b>. Pri prepnutí sa zmení aj prianie.</p>
+
+    <canvas id="c" width="900" height="560" aria-label="stromček"></canvas>
+
+    <div class="row">
+      <button id="modeBtn">Režim: twinkle</button>
+    </div>
+
+    <div class="wish" id="wish"></div>
+
+    <div class="signature">
+      Praje <strong>Barbora Kyselová</strong>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+
+  // Fyzikálne vtipné priania (budú sa meniť pri zmene režimu)
+  const wishes = [
+    "Veselé Vianoce! Nech ti v novom roku nikdy neklesne… potenciál. ⚡🎁",
+    "Pokojné sviatky! Nech je odpor len v rezistoroch, nie doma. 😉🔧",
+    "Šťastné a veselé! Nech sa energia nestráca… iba premieňa na radosť. 🔋✨",
+    "Vianoce v režime DC: stabilné. Nový rok: nech je bez skratov! ⚡🎄",
+    "Prajem sviatky s minimálnymi stratami… a maximálnym svetelným výkonom. 💡❄️",
+  ];
+
+  // Režimy blikania
+  let mode = 0; // 0 twinkle, 1 wave, 2 chase
+  const modeNames = ["twinkle", "vlna", "naháňačka"];
+
+  // Menej LED, ale pekné rozloženie
+  const layout = [1, 2, 3, 4, 4, 3]; // 17 LED
+  const lights = [];
+  const centerX = 450;
+  const topY = 110;
+  const rowGap = 56;
+  let id = 0;
+
+  // "Vianočné" farby
+  const hues = [0, 18, 40, 120, 200, 320];
+
+  // Vytvor body svetielok
+  for (let r = 0; r < layout.length; r++) {
+    const count = layout[r];
+    const y = topY + r * rowGap;
+    const span = 80 + r * 140;
+    for (let i = 0; i < count; i++) {
+      const x = (count === 1)
+        ? centerX
+        : (centerX - span/2 + (span/(count-1))*i);
+
+      lights.push({
+        id: id++,
+        x, y,
+        size: 24, // výška LED
+        on: Math.random() < 0.6,
+        hue: hues[Math.floor(Math.random() * hues.length)]
+      });
+    }
+  }
+
+  // Batéria (namiesto pňa)
+  const battery = {
+    x: centerX - 135,
+    y: topY + layout.length * rowGap + 34,
+    w: 270,
+    h: 78
+  };
+
+  // Poradie pre drôt (hadík) – aby to pôsobilo ako reťaz
+  const wireOrder = [];
+  let idx = 0;
+  for (let r = 0; r < layout.length; r++) {
+    const row = lights.slice(idx, idx + layout[r]);
+    wireOrder.push(...(r % 2 === 0 ? row : row.slice().reverse()));
+    idx += layout[r];
+  }
+
+  // Hviezda
+  const star = { x: centerX, y: 62 };
+  let t = 0;
+
+  function setWishText() {
+    document.getElementById("wish").textContent = wishes[mode % wishes.length];
+  }
+
+  function setMode(next = true) {
+    mode = next ? (mode + 1) % 3 : mode;
+    document.getElementById("modeBtn").textContent = "Režim: " + modeNames[mode];
+    setWishText();
+  }
+
+  // --- Pomocné kreslenie ---
+  function roundRect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.arcTo(x+w, y, x+w, y+h, rr);
+    ctx.arcTo(x+w, y+h, x, y+h, rr);
+    ctx.arcTo(x, y+h, x, y, rr);
+    ctx.arcTo(x, y, x+w, y, rr);
+    ctx.closePath();
+  }
+
+  // Catmull-Rom -> Bezier spline (na pekný drôt)
+  function spline(pts) {
+    if (pts.length < 2) return;
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[i + 2] || p2;
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+    }
+  }
+
+  // --- LED kreslenie: sklíčko + odlesk + sokel + nožička + žiara ---
+  function drawLED(x, y, h, hue, isOn, phase = 0) {
+    const w = h * 0.72;
+    const domeH = h * 0.65;
+    const baseH = h * 0.28;
+
+    const onAlpha = isOn ? 0.96 : 0.18;
+    const glow = isOn ? (0.7 + 0.3 * Math.sin(phase)) : 0.0;
+
+    // nožička (krátky spoj ku drôtu)
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = "rgba(232,236,255,0.35)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y + domeH + baseH);
+    ctx.lineTo(x, y + domeH + baseH + 10);
+    ctx.stroke();
+    ctx.restore();
+
+    // sokel
+    ctx.save();
+    ctx.globalAlpha = 0.78;
+    const baseGrad = ctx.createLinearGradient(x, y + domeH, x, y + domeH + baseH);
+    baseGrad.addColorStop(0, "rgba(232,236,255,0.22)");
+    baseGrad.addColorStop(1, "rgba(232,236,255,0.08)");
+    ctx.fillStyle = baseGrad;
+    ctx.strokeStyle = "rgba(232,236,255,0.18)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, x - w*0.60, y + domeH - 2, w*1.20, baseH + 4, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // telo (sklíčko)
+    ctx.save();
+    ctx.globalAlpha = onAlpha;
+
+    if (isOn) {
+      ctx.shadowBlur = 30;
+      ctx.shadowColor = `hsla(${hue}, 90%, 65%, ${0.55 + 0.25*glow})`;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+
+    const bodyGrad = ctx.createRadialGradient(
+      x - w*0.25, y + domeH*0.25, 2,
+      x, y + domeH*0.35, w*1.25
+    );
+    bodyGrad.addColorStop(0, `hsla(${hue}, 95%, 78%, 0.98)`);
+    bodyGrad.addColorStop(0.55, `hsla(${hue}, 95%, 56%, 0.92)`);
+    bodyGrad.addColorStop(1, `hsla(${hue}, 95%, 36%, 0.88)`);
+    ctx.fillStyle = bodyGrad;
+
+    ctx.beginPath();
+    ctx.moveTo(x - w, y + domeH);
+    ctx.quadraticCurveTo(x - w, y, x, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + domeH);
+    ctx.quadraticCurveTo(x, y + domeH*1.10, x - w, y + domeH);
+    ctx.closePath();
+    ctx.fill();
+
+    // obrys
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = isOn ? 0.38 : 0.16;
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // odlesk
+    ctx.globalAlpha = isOn ? 0.46 : 0.22;
+    const hlGrad = ctx.createLinearGradient(x - w*0.45, y + 2, x - w*0.05, y + domeH);
+    hlGrad.addColorStop(0, "rgba(255,255,255,0.75)");
+    hlGrad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = hlGrad;
+    ctx.beginPath();
+    ctx.ellipse(x - w*0.30, y + domeH*0.42, w*0.22, domeH*0.36, -0.2, 0, Math.PI*2);
+    ctx.fill();
+
+    // hotspot
+    if (isOn) {
+      ctx.globalAlpha = 0.58;
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.beginPath();
+      ctx.arc(x + w*0.10, y + domeH*0.55, 2.2, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawTreeBackground() {
+    ctx.fillStyle = "rgba(46, 185, 110, 0.14)";
+    for (let r = 0; r < layout.length; r++) {
+      const y = topY + r * rowGap - 28;
+      const w = 190 + r * 150;
+      ctx.beginPath();
+      ctx.moveTo(centerX, y);
+      ctx.lineTo(centerX - w/2, y + 100);
+      ctx.lineTo(centerX + w/2, y + 100);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawStar() {
+    const starGlow = 0.6 + 0.4 * Math.sin(t * 5);
+    ctx.save();
+    ctx.shadowBlur = 36;
+    ctx.shadowColor = `rgba(255, 240, 170, ${starGlow})`;
+    ctx.fillStyle = "rgba(255, 240, 170, 0.92)";
+
+    // 5-cípa hviezda
+    let rot = Math.PI / 2 * 3;
+    let step = Math.PI / 5;
+    ctx.beginPath();
+    ctx.moveTo(star.x, star.y - 20);
+    for (let i = 0; i < 5; i++) {
+      ctx.lineTo(star.x + Math.cos(rot) * 20, star.y + Math.sin(rot) * 20);
+      rot += step;
+      ctx.lineTo(star.x + Math.cos(rot) * 9, star.y + Math.sin(rot) * 9);
+      rot += step;
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBattery() {
+    const {x, y, w, h} = battery;
+
+    ctx.save();
+    const bg = ctx.createLinearGradient(x, y, x+w, y);
+    bg.addColorStop(0, "rgba(232,236,255,0.10)");
+    bg.addColorStop(0.35, "rgba(232,236,255,0.06)");
+    bg.addColorStop(1, "rgba(232,236,255,0.12)");
+    ctx.fillStyle = bg;
+    ctx.strokeStyle = "rgba(232,236,255,0.18)";
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, x, y, w, h, 16);
+    ctx.fill();
+    ctx.stroke();
+
+    // pól
+    ctx.fillStyle = "rgba(232,236,255,0.14)";
+    roundRect(ctx, x+w-22, y+18, 14, h-36, 6);
+    ctx.fill();
+
+    // nálepka
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    roundRect(ctx, x+14, y+14, w-44, h-28, 12);
+    ctx.fill();
+
+    // + a -
+    ctx.fillStyle = "rgba(232,236,255,0.85)";
+    ctx.font = "700 18px system-ui, sans-serif";
+    ctx.fillText("+", x+w-36, y+30);
+    ctx.fillText("–", x+22, y+30);
+
+    // text na batérii
+    ctx.font = "600 16px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(232,236,255,0.75)";
+    ctx.fillText("Sviatočný zdroj: 4.5V × RADOSŤ", x+28, y+44);
+
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(232,236,255,0.55)";
+    ctx.fillText("Upozornenie: môže spôsobovať úsmev.", x+28, y+62);
+
+    ctx.restore();
+  }
+
+  function drawWire() {
+    const pts = [];
+    // štart pri batérii (pravý vrch)
+    pts.push({ x: battery.x + battery.w - 28, y: battery.y + 18 });
+    // cez svetielka (pod nimi)
+    for (const L of wireOrder) pts.push({ x: L.x, y: L.y + 26 });
+    // koniec pri batérii (ľavý vrch)
+    pts.push({ x: battery.x + 24, y: battery.y + 18 });
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // jemný “metal” drôt (2 vrstvy)
+    ctx.lineWidth = 4.6;
+    ctx.strokeStyle = "rgba(232,236,255,0.22)";
+    ctx.beginPath(); spline(pts); ctx.stroke();
+
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = "rgba(0,0,0,0.28)";
+    ctx.beginPath(); spline(pts); ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function update() {
+    t += 0.02;
+
+    for (const L of lights) {
+      if (mode === 0) {
+        // twinkle
+        if (Math.random() < 0.05) L.on = !L.on;
+      } else if (mode === 1) {
+        // vlna zhora nadol
+        const phase = (L.y - topY) / rowGap;
+        L.on = Math.sin(t * 3.2 - phase * 0.95) > 0.15;
+      } else if (mode === 2) {
+        // naháňačka po drôte
+        const k = Math.floor((t * 8) % wireOrder.length);
+        L.on = (wireOrder[k].id === L.id) || (wireOrder[(k+1) % wireOrder.length].id === L.id);
+      }
+    }
+
+    render();
+    requestAnimationFrame(update);
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // pozadie jemne "hmlisté"
+    const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    g.addColorStop(0, "rgba(255,255,255,0.06)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    drawTreeBackground();
+    drawStar();
+    drawBattery();
+    drawWire();
+
+    // LEDky nad drôtom
+    for (const L of lights) {
+      drawLED(L.x, L.y - 12, L.size, L.hue, L.on, t * 6 + L.id * 0.22);
+    }
+  }
+
+  // UI
+  document.getElementById("modeBtn").addEventListener("click", () => setMode(true));
+  canvas.addEventListener("click", () => setMode(true));
+
+  // Init
+  setMode(false);
+  render();
+  update();
+})();
+</script>
+</body>
+</html>
